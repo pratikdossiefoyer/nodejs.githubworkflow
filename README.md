@@ -47,9 +47,9 @@ This project uses GitHub Actions for automatic deployment. The workflow is confi
 
 To set up the GitHub Actions deployment, add the following secrets to your repository:
 
-- `SSH_HOST`: Your server IP (e.g., 192.168.1.247)
-- `SSH_PORT`: SSH port (e.g., 9923)
-- `SSH_USERNAME`: SSH username (e.g., deployadmin)
+- `SSH_HOST`: Your server IP 
+- `SSH_PORT`: SSH port
+- `SSH_USERNAME`: SSH username 
 - `SSH_PASSWORD`: SSH password
 - `MONGODB_URI`: Your MongoDB connection string
 
