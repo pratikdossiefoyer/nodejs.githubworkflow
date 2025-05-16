@@ -25,17 +25,14 @@ jobs:
       
       - name: Deploy to server
         run: |
-          # Since we're using a self-hosted runner on the same network,
-          # we can directly access the server using its private IP
-          
           # Ensure target directory exists
           ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "mkdir -p ~/nodejs-mongo-api"
           
           # Stop existing application if running
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "pm2 stop nodejs-mongo-api || true"
+          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "pm2 delete nodejs-mongo-api || true"
           
           # Copy files to server
           rsync -avz --delete -e "ssh -i $HOME/.ssh/id_ed25519 -p 9923" ./ deployadmin@192.168.1.244:~/nodejs-mongo-api/
           
-          # Install dependencies and start application
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "cd ~/nodejs-mongo-api && npm install --production && command -v pm2 || npm install pm2 -g && pm2 restart nodejs-mongo-api || pm2 start src/app.js --name nodejs-mongo-api"
+          # Install dependencies and start application exactly as you would locally, but with PM2
+          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "cd ~/nodejs-mongo-api && npm install --production && pm2 start npm --name nodejs-mongo-api -- start"
