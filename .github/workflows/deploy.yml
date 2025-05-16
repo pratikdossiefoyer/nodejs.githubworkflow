@@ -23,27 +23,47 @@ jobs:
           echo "PORT=${{ secrets.PORT }}" > .env
           echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
       
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.7.0
+      - name: Build package for deployment
+        run: |
+          npm run build || echo "No build script found, skipping build step"
+          # Create a deployment package
+          mkdir -p deployment
+          cp -r src/ deployment/ || true
+          cp -r dist/ deployment/ || true
+          cp -r build/ deployment/ || true
+          cp package.json deployment/ || true
+          cp package-lock.json deployment/ || true
+          cp .env deployment/ || true
+          
+      - name: Create deployment archive
+        run: |
+          tar -czf deployment.tar.gz deployment/
+          
+      - name: Deploy via alternative method
+        uses: appleboy/scp-action@v0.1.4
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-      
-      - name: Debug SSH connection
-        run: |
-          echo "Testing connection to ${{ secrets.SSH_HOST }} on port ${{ secrets.SSH_PORT }}"
-          # Skip known_hosts check for now
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "echo Connection successful"
-      
-      - name: Deploy to server
-        run: |
-          # Deploy using SSH with strict host checking disabled
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p ~/nodejs-mongo-api"
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deployment.tar.gz"
+          target: "~/"
           
-          # Stop existing application if running
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "pm2 stop nodejs-mongo-api || true"
-          
-          # Copy files to server (using scp instead of rsync)
-          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${{ secrets.SSH_PORT }} -r ./* ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:~/nodejs-mongo-api/
-          
-          # Install dependencies and start the application
-          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "cd ~/nodejs-mongo-api && npm install --production && command -v pm2 || npm install pm2 -g && pm2 restart nodejs-mongo-api || pm2 start src/app.js --name nodejs-mongo-api"
+      - name: Remote deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            mkdir -p ~/nodejs-mongo-api
+            tar -xzf ~/deployment.tar.gz -C ~/
+            cp -r ~/deployment/* ~/nodejs-mongo-api/
+            rm -rf ~/deployment ~/deployment.tar.gz
+            cd ~/nodejs-mongo-api
+            npm install --production
+            # Install PM2 if not already installed
+            command -v pm2 || npm install pm2 -g
+            # Start or restart the application
+            pm2 restart nodejs-mongo-api || pm2 start src/app.js --name nodejs-mongo-api
