@@ -49,7 +49,11 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           timeout: 60s
+          script_stop: false
           script: |
+            echo "Attempting connection..."
+            whoami
+            pwd
             # Create app directory if it doesn't exist
             mkdir -p ~/nodejs-mongo-api
             
