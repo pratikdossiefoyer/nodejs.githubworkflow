@@ -28,25 +28,22 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
       
-      - name: Add host to known_hosts
+      - name: Debug SSH connection
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-      
-      - name: Test SSH Connection
-        run: |
-          ssh -o StrictHostKeyChecking=no -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "echo Connection successful"
+          echo "Testing connection to ${{ secrets.SSH_HOST }} on port ${{ secrets.SSH_PORT }}"
+          # Skip known_hosts check for now
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "echo Connection successful"
       
       - name: Deploy to server
         run: |
-          # First, ensure the target directory exists
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p ~/nodejs-mongo-api"
+          # Deploy using SSH with strict host checking disabled
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p ~/nodejs-mongo-api"
           
           # Stop existing application if running
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "pm2 stop nodejs-mongo-api || true"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "pm2 stop nodejs-mongo-api || true"
           
-          # Copy files to server (using scp instead of rsync for better compatibility)
-          scp -P ${{ secrets.SSH_PORT }} -r ./* ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:~/nodejs-mongo-api/
+          # Copy files to server (using scp instead of rsync)
+          scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -P ${{ secrets.SSH_PORT }} -r ./* ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:~/nodejs-mongo-api/
           
           # Install dependencies and start the application
-          ssh -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "cd ~/nodejs-mongo-api && npm install --production && which pm2 || npm install pm2 -g && pm2 start src/app.js --name nodejs-mongo-api || pm2 restart nodejs-mongo-api"
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "cd ~/nodejs-mongo-api && npm install --production && command -v pm2 || npm install pm2 -g && pm2 restart nodejs-mongo-api || pm2 start src/app.js --name nodejs-mongo-api"
