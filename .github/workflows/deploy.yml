@@ -23,6 +23,15 @@ jobs:
           echo "PORT=${{ secrets.PORT }}" > .env
           echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
       
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "Host 192.168.1.244" > ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  UserKnownHostsFile=/dev/null" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          chmod 600 $HOME/.ssh/id_ed25519 || true
+      
       - name: Deploy to server
         run: |
           # Ensure target directory exists
@@ -35,7 +44,7 @@ jobs:
           rsync -avz --delete -e "ssh -i $HOME/.ssh/id_ed25519 -p 9923" ./ deployadmin@192.168.1.244:~/nodejs-mongo-api/
           
           # Ensure correct Node.js version and update NPM
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "source ~/.nvm/nvm.sh && nvm install 18 && nvm use 18 || curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash && source ~/.nvm/nvm.sh && nvm install 18 && nvm use 18"
+          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "source ~/.nvm/nvm.sh && nvm install 18 && nvm use 18 || (curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash && source ~/.nvm/nvm.sh && nvm install 18 && nvm use 18)"
           
           # Install dependencies and start application
           ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "cd ~/nodejs-mongo-api && source ~/.nvm/nvm.sh && npm install --production && pm2 start npm --name nodejs-mongo-api -- start"
