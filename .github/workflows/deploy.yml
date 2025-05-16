@@ -27,11 +27,19 @@ jobs:
         uses: webfactory/ssh-agent@v0.7.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          
+      - name: Debug connection
+        run: |
+          echo "SSH_HOST: ${{ secrets.SSH_HOST }}"
+          echo "SSH_PORT: ${{ secrets.SSH_PORT || '22' }}"
+          echo "SSH_USERNAME: ${{ secrets.SSH_USERNAME }}"
       
       - name: Add host to known_hosts
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          chmod 700 ~/.ssh
+          ssh-keyscan -p ${{ secrets.SSH_PORT || '22' }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
       
       - name: Deploy to server
         uses: appleboy/ssh-action@master
