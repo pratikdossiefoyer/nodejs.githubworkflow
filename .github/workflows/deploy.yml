@@ -23,69 +23,27 @@ jobs:
           echo "PORT=${{ secrets.PORT }}" > .env
           echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
       
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          
-      - name: Debug connection
-        run: |
-          echo "SSH_HOST: ${{ secrets.SSH_HOST }}"
-          echo "SSH_PORT: ${{ secrets.SSH_PORT || '22' }}"
-          echo "SSH_USERNAME: ${{ secrets.SSH_USERNAME }}"
-      
-      - name: Add host to known_hosts
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          ssh-keyscan -p ${{ secrets.SSH_PORT || '22' }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.SSH_PORT }} -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Test SSH Connection
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "echo Connection successful"
       
       - name: Deploy to server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          timeout: 60s
-          script_stop: false
-          script: |
-            echo "Attempting connection..."
-            whoami
-            pwd
-            # Create app directory if it doesn't exist
-            mkdir -p ~/nodejs-mongo-api
-            
-            # Stop existing application if running
-            pm2 stop nodejs-mongo-api || true
-            
-            # Debug connection information
-            echo "Connection established successfully"
-      
-      - name: Copy files to server
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "."
-          target: "~/nodejs-mongo-api"
-      
-      - name: Start application
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd ~/nodejs-mongo-api
-            npm install --production
-            
-            # Install PM2 if not already installed
-            npm install pm2 -g || true
-            
-            # Start the application with PM2
-            pm2 start src/app.js --name nodejs-mongo-api
+        run: |
+          # First, ensure the target directory exists
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "mkdir -p ~/nodejs-mongo-api"
+          
+          # Stop existing application if running
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "pm2 stop nodejs-mongo-api || true"
+          
+          # Copy files to server
+          rsync -avz --delete -e "ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }}" ./ ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:~/nodejs-mongo-api/
+          
+          # Install dependencies and start the application
+          ssh -i ~/.ssh/id_ed25519 -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "cd ~/nodejs-mongo-api && npm install --production && npm install pm2 -g || true && pm2 start src/app.js --name nodejs-mongo-api"
