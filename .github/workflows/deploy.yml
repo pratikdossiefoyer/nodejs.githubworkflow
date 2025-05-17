@@ -20,29 +20,21 @@ jobs:
           echo "PORT=${{ secrets.PORT }}" > .env
           echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
       
-      - name: Setup SSH
+      - name: Deploy with manual SSH password
+        env:
+          SSHPASS: ${{ secrets.SSH_PASSWORD }}
         run: |
-          # Copy SSH key to the temporary environment
-          mkdir -p $HOME/.ssh
-          cp /home/deployadmin/.ssh/id_ed25519 $HOME/.ssh/
-          chmod 600 $HOME/.ssh/id_ed25519
+          # Install sshpass if not already installed
+          which sshpass || sudo apt-get update && sudo apt-get install -y sshpass
           
-          # Add target server to known hosts
-          ssh-keyscan -p 9923 192.168.1.244 >> $HOME/.ssh/known_hosts
-          
-          # Test the connection
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "echo SSH test successful"
-      
-      - name: Deploy to server
-        run: |
           # Stop and remove existing container if it exists
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker stop nodejs-mongo-api || true && docker rm nodejs-mongo-api || true"
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 9923 deployadmin@192.168.1.244 "docker stop nodejs-mongo-api || true && docker rm nodejs-mongo-api || true"
           
           # Transfer the Docker image to the server
-          docker save nodejs-mongo-api | ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker load"
+          docker save nodejs-mongo-api | sshpass -e ssh -o StrictHostKeyChecking=no -p 9923 deployadmin@192.168.1.244 "docker load"
           
           # Transfer the env file
-          scp -i $HOME/.ssh/id_ed25519 -P 9923 .env deployadmin@192.168.1.244:~/nodejs-mongo-api-env
+          sshpass -e scp -o StrictHostKeyChecking=no -P 9923 .env deployadmin@192.168.1.244:~/nodejs-mongo-api-env
           
           # Run the Docker container on the server
-          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker run -d --name nodejs-mongo-api -p \${PORT:-3000}:3000 --restart unless-stopped --env-file ~/nodejs-mongo-api-env nodejs-mongo-api"
+          sshpass -e ssh -o StrictHostKeyChecking=no -p 9923 deployadmin@192.168.1.244 "docker run -d --name nodejs-mongo-api -p \${PORT:-3000}:3000 --restart unless-stopped --env-file ~/nodejs-mongo-api-env nodejs-mongo-api"
