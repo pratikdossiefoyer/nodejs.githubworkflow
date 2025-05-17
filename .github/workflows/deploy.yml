@@ -1,41 +1,39 @@
 name: Deploy to Server
+
 on:
   push:
     branches: [ main ]
+
 jobs:
   deploy:
-    runs-on: self-hosted  # Using self-hosted runner instead of GitHub's runners
+    runs-on: self-hosted
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-      
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p 9923 192.168.1.244 >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
       - name: Setup Docker
         uses: docker/setup-buildx-action@v2
-      
+
       - name: Build Docker image
         run: docker build -t nodejs-mongo-api .
-      
+
       - name: Create env file
         run: |
           echo "PORT=${{ secrets.PORT }}" > .env
           echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
-      
-      - name: Setup SSH
-        run: |
-          # Ensure ~/.ssh exists and has correct permissions
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          
-          # Setup known hosts and test SSH without copying
-          ssh-keyscan -p 9923 192.168.1.244 >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
-          
-          # Test if the key works from its current location
-          ls -la ~/.ssh/
-          
-          # Try SSH connection with verbose logging
-          ssh -v -p 9923 deployadmin@192.168.1.244 "echo SSH test successful"
-      
+
+      - name: Test SSH connection
+        run: ssh -p 9923 deployadmin@192.168.1.244 "echo SSH test successful"
+
       - name: Deploy to server
         run: |
           # Stop and remove existing container if it exists
