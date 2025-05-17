@@ -1,75 +1,35 @@
-name: Deploy with Docker Compose
+name: Deploy to Server
 on:
   push:
     branches: [ main ]
-
 jobs:
   deploy:
-    runs-on: self-hosted  # Using self-hosted runner that's already on your server
+    runs-on: self-hosted  # Using self-hosted runner instead of GitHub's runners
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
       
-      - name: Create Dockerfile if it doesn't exist
-        run: |
-          if [ ! -f Dockerfile ]; then
-            cat > Dockerfile << 'EOF'
-FROM node:18-alpine
-
-WORKDIR /app
-
-# Copy package files and install dependencies
-COPY package*.json ./
-RUN npm ci --production
-
-# Copy the rest of the application
-COPY . .
-
-# Expose the port your app runs on
-EXPOSE ${{ secrets.PORT }}
-
-# Start the application
-CMD ["npm", "start"]
-EOF
-          fi
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v2
       
-      - name: Create docker-compose.yml file
-        run: |
-          cat > docker-compose.yml << EOF
-version: '3'
-
-services:
-  api:
-    build: .
-    container_name: nodejs-mongo-api
-    restart: unless-stopped
-    ports:
-      - "${{ secrets.PORT }}:${{ secrets.PORT }}"
-    environment:
-      - PORT=${{ secrets.PORT }}
-      - MONGODB_URI=${{ secrets.MONGODB_URI }}
-EOF
+      - name: Build Docker image
+        run: docker build -t nodejs-mongo-api .
       
-      - name: Deploy with Docker Compose
+      - name: Create env file
         run: |
-          # Stop any running container
-          docker-compose down || true
+          echo "PORT=${{ secrets.PORT }}" > .env
+          echo "MONGODB_URI=${{ secrets.MONGODB_URI }}" >> .env
+      
+      - name: Deploy to server
+        run: |
+          # Stop and remove existing container if it exists
+          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker stop nodejs-mongo-api || true && docker rm nodejs-mongo-api || true"
           
-          # Build and start the new container
-          docker-compose up -d --build
-      
-      - name: Verify container is running
-        run: |
-          sleep 5  # Give the container time to start
-          if [ "$(docker ps -q -f name=nodejs-mongo-api)" ]; then
-            echo "Container is running successfully"
-          else
-            echo "Container failed to start" >&2
-            docker-compose logs
-            exit 1
-          fi
-      
-      - name: Clean up old Docker images
-        run: |
-          # Remove dangling images to save space
-          docker image prune -f
+          # Transfer the Docker image to the server
+          docker save nodejs-mongo-api | ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker load"
+          
+          # Transfer the env file
+          scp -i $HOME/.ssh/id_ed25519 -P 9923 .env deployadmin@192.168.1.244:~/nodejs-mongo-api-env
+          
+          # Run the Docker container on the server
+          ssh -i $HOME/.ssh/id_ed25519 -p 9923 deployadmin@192.168.1.244 "docker run -d --name nodejs-mongo-api -p ${{ secrets.PORT }}:3000 --restart unless-stopped --env-file ~/nodejs-mongo-api-env nodejs-mongo-api"
